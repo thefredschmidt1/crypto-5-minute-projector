@@ -1,0 +1,9 @@
+{
+  "name": "Crypto 3-Minute Projector",
+  "short_name": "Crypto 3m",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070b16",
+  "theme_color": "#0b1020",
+  "description": "Automatic three-minute BTC, ETH, and SOL signal tests"
+}
