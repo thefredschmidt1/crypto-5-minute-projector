@@ -136,8 +136,11 @@ async function monitor() {
         const result = analyze(candles);
         const previous = state.signals[asset]?.signal || 'WAIT';
         state.signals[asset] = { ...result, checkedAt: new Date().toISOString() };
-        if (state.active[asset] && Date.now() >= Date.parse(state.active[asset].endsAt)) await finishTest(asset, result.price);
-        if (!state.active[asset] && result.signal !== 'WAIT' &&) await startTest(asset, result);
+
+       if (!state.active[asset] && result.signal !== 'WAIT') {
+  await startTest(asset, result);
+}
+         if (!state.active[asset] && result.signal !== 'WAIT' ) await startTest(asset, result);
       } catch (error) {
         console.error(asset, error.message);
       }
