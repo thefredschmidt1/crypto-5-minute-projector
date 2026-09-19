@@ -21,26 +21,506 @@
 <section class="card"><b>Recent 3-minute tests</b><div id="log"><div class="small" style="margin-top:9px">No completed tests yet.</div></div><div class="small" style="margin-top:10px">Your earlier 5-minute history remains saved separately.</div></section>
 <section class="card small"><b>iPhone:</b> Open the hosted page in Safari, tap Share, then “Add to Home Screen.” This downloaded file itself may be previewed, but live API access works most reliably after hosting it as a normal HTTPS webpage.</section>
 </main>
+
 <script>
-const $=id=>document.getElementById(id); const ASSETS={BTC:{pair:'XBTUSD',name:'Bitcoin'},ETH:{pair:'ETHUSD',name:'Ethereum'},SOL:{pair:'SOLUSD',name:'Solana'}};let asset='BTC',candles=[],active=null,timerInt=null,lastSignal={signal:'WAIT',confidence:0,score:0};
-function ema(a,n){let k=2/(n+1),e=a[0];for(let v of a.slice(1))e=v*k+e*(1-k);return e}
-function rsi(a,n=14){if(a.length<n+1)return 50;let g=0,l=0;for(let i=a.length-n;i<a.length;i++){let d=a[i]-a[i-1];if(d>0)g+=d;else l-=d}if(l===0)return 100;return 100-(100/(1+(g/n)/(l/n)))}
-function fmt(n){return '$'+n.toLocaleString(undefined,{maximumFractionDigits:2})}
-function analyze(){if(candles.length<25)return;let c=candles.map(x=>x.close),v=candles.map(x=>x.vol),p=c.at(-1);let e5=ema(c.slice(-20),5),e12=ema(c.slice(-25),12),R=rsi(c),m3=(p/c.at(-4)-1)*100,m5=(p/c.at(-6)-1)*100;let av=v.slice(-11,-1).reduce((a,b)=>a+b,0)/10,vr=v.at(-1)/(av||1);let rets=[];for(let i=c.length-15;i<c.length;i++)rets.push(Math.abs((c[i]/c[i-1]-1)*100));let volatility=rets.reduce((a,b)=>a+b,0)/rets.length;
-let score=0;score+=Math.max(-28,Math.min(28,(e5/e12-1)*100*180));score+=Math.max(-12,Math.min(12,m5*10));score+=Math.max(-28,Math.min(28,m3*24));score+=(R>55?Math.min(12,(R-55)*.8):R<45?-Math.min(12,(45-R)*.8):0);score+=(vr>1.15?Math.sign(m3||1)*Math.min(8,(vr-1)*8):0);
-let trendDir=Math.sign(e5-e12),momentumDir=Math.sign(m3),conflict=trendDir&&momentumDir&&trendDir!==momentumDir;let weakMomentum=Math.abs(m3)<.025;let sig=Math.abs(score)<20||volatility>.28||conflict||weakMomentum?'WAIT':score>0?'UP':'DOWN';let conf=sig==='WAIT'?Math.max(35,55-Math.abs(score)):Math.min(88,52+Math.abs(score)*.65);lastSignal={signal:sig,confidence:Math.round(conf),score};
-$('signal').textContent=sig;$('signal').className='signalWord '+sig;$('conf').textContent=sig==='WAIT'?`No strong edge · score ${score.toFixed(1)}`:`${Math.round(conf)}% model confidence · score ${score.toFixed(1)}`;$('fill').style.width=Math.min(100,Math.max(0,50+score/2))+'%';
-$('mom').textContent=(m3>=0?'+':'')+m3.toFixed(3)+'%';$('rsi').textContent=R.toFixed(1);$('trend').textContent=e5>e12?'Bullish':'Bearish';$('vol').textContent=vr.toFixed(2)+'× avg';$('price').textContent=fmt(p);$('chg').textContent='1m '+((p/c.at(-2)-1)*100).toFixed(3)+'%';draw(c.slice(-60));$('start').disabled=false}
-function draw(vals){let cv=$('chart'),dpr=devicePixelRatio||1,w=cv.clientWidth,h=cv.clientHeight;cv.width=w*dpr;cv.height=h*dpr;let x=cv.getContext('2d');x.scale(dpr,dpr);x.clearRect(0,0,w,h);let min=Math.min(...vals),max=Math.max(...vals),pad=(max-min)*.08||1;x.strokeStyle='#6ea8fe';x.lineWidth=2;x.beginPath();vals.forEach((v,i)=>{let px=i/(vals.length-1)*w,py=h-8-(v-min+pad)/(max-min+2*pad)*(h-16);i?x.lineTo(px,py):x.moveTo(px,py)});x.stroke()}
-async function load(){let requested=asset;try{let api=`https://api.kraken.com/0/public/OHLC?pair=${ASSETS[requested].pair}&interval=1`;let r=await fetch(api,{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);let j=await r.json();if(j.error?.length)throw Error(j.error.join(', '));if(requested!==asset)return;let key=Object.keys(j.result).find(k=>k!=='last');candles=j.result[key].slice(-180).map(a=>({time:+a[0],open:+a[1],high:+a[2],low:+a[3],close:+a[4],vol:+a[6]}));$('live').textContent='● Live · Kraken';$('live').className='live ok';$('status').textContent=active?'Test running':'Ready';analyze();if(active)checkCurrent()}catch(e){if(requested!==asset)return;$('live').textContent='Connection issue';$('status').innerHTML='<span class="error">Live data unavailable. Reload or try another network.</span>';console.error(e)}}
-function selectAsset(next){if(active||next===asset)return;asset=next;candles=[];lastSignal={signal:'WAIT',confidence:0,score:0};document.querySelectorAll('.assetBtn').forEach(b=>b.classList.toggle('selected',b.dataset.asset===asset));$('title').textContent=`${asset} 3-Minute Signal`;$('pairLabel').textContent=`${asset} / USD`;$('price').textContent='—';$('chg').textContent='—';$('signal').textContent='WAIT';$('signal').className='signalWord WAIT';$('conf').textContent=`Loading ${ASSETS[asset].name} data…`;$('mom').textContent=$('rsi').textContent=$('trend').textContent=$('vol').textContent='—';$('start').disabled=true;$('live').textContent='Connecting…';$('live').className='live';load()}
-function start(){if(active)return;let p=candles.at(-1).close;active={asset,started:Date.now(),ends:Date.now()+180000,startPrice:p,pred:lastSignal.signal,confidence:lastSignal.confidence};$('start').disabled=true;document.querySelectorAll('.assetBtn').forEach(b=>b.disabled=true);$('status').textContent=`Locked ${asset}: ${active.pred} at ${fmt(p)}`;tick();timerInt=setInterval(tick,1000)}
-function tick(){if(!active)return;let left=Math.max(0,active.ends-Date.now()),s=Math.ceil(left/1000);$('timer').textContent=String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');if(left<=0)finish()}
-function checkCurrent(){if(active&&Date.now()>=active.ends)finish()}
-function finish(){clearInterval(timerInt);let end=candles.at(-1)?.close||active.startPrice,actual=end>active.startPrice?'UP':end<active.startPrice?'DOWN':'FLAT';let correct=active.pred==='WAIT'?'Skipped':active.pred===actual?'Correct':'Incorrect';let entry={...active,endPrice:end,actual,result:correct,date:new Date().toLocaleString(),timeframe:3};let logs=JSON.parse(localStorage.getItem('crypto3logs')||'[]');logs.unshift(entry);localStorage.setItem('crypto3logs',JSON.stringify(logs.slice(0,100)));$('status').textContent=`${correct}: predicted ${active.pred}, actual ${actual}`;active=null;$('start').disabled=false;document.querySelectorAll('.assetBtn').forEach(b=>b.disabled=false);$('timer').textContent='03:00';renderLog()}
-function renderLog(){let a=JSON.parse(localStorage.getItem('crypto3logs')||'[]');$('log').innerHTML=a.length?a.slice(0,20).map(x=>`<div class="logrow"><span>${x.asset||'BTC'} ${x.pred} → ${x.actual}</span><span>${x.result}</span><span>${((x.endPrice/x.startPrice-1)*100).toFixed(3)}%</span></div>`).join(''):'<div class="small" style="margin-top:9px">No completed tests yet.</div>'}
-$('start').onclick=start;document.querySelectorAll('.assetBtn').forEach(b=>b.onclick=()=>selectAsset(b.dataset.asset));renderLog();load();setInterval(load,15000);addEventListener('resize',()=>candles.length&&draw(candles.map(x=>x.close).slice(-60)));
-function urlBase64ToUint8Array(value){let padding='='.repeat((4-value.length%4)%4),base64=(value+padding).replace(/-/g,'+').replace(/_/g,'/'),raw=atob(base64);return Uint8Array.from([...raw].map(x=>x.charCodeAt(0)))}
-async function enableNotifications(){let status=$('notifyStatus');try{if(!('serviceWorker'in navigator)||!('PushManager'in window))throw Error('Push notifications require the Home Screen app on iPhone.');let permission=await Notification.requestPermission();if(permission!=='granted')throw Error('Notification permission was not allowed.');let registration=await navigator.serviceWorker.register('./sw.js');await navigator.serviceWorker.ready;let key=await fetch('/api/push-key').then(r=>r.json());let subscription=await registration.pushManager.getSubscription()||await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(key.publicKey)});let response=await fetch('/api/subscribe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(subscription)});if(!response.ok)throw Error('The server could not save this iPhone.');status.textContent='Notifications enabled on this iPhone';$('notify').textContent='Notifications Enabled';$('notify').disabled=true}catch(error){status.innerHTML=`<span class="error">${error.message}</span>`}}
-$('notify').onclick=enableNotifications;if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});
-</script></body></html>
+const $=id=>document.getElementById(id);
+
+const ASSETS={
+BTC:{pair:'XBTUSD',name:'Bitcoin'},
+ETH:{pair:'ETHUSD',name:'Ethereum'},
+SOL:{pair:'SOLUSD',name:'Solana'}
+};
+
+let asset='BTC';
+let candles=[];
+let activeTests={};
+let timerInt=null;
+let lastSignal={signal:'WAIT',confidence:0,score:0};
+
+function ema(a,n){
+let k=2/(n+1),e=a[0];
+for(let v of a.slice(1))e=v*k+e*(1-k);
+return e
+}
+
+function rsi(a,n=14){
+if(a.length<n+1)return 50;
+let g=0,l=0;
+for(let i=a.length-n;i<a.length;i++){
+let d=a[i]-a[i-1];
+if(d>0)g+=d;
+else l-=d
+}
+if(l===0)return 100;
+return 100-(100/(1+(g/n)/(l/n)))
+}
+
+function fmt(n){
+return '$'+n.toLocaleString(undefined,{maximumFractionDigits:2})
+}
+
+function analyze(){
+if(candles.length<25)return;
+
+let c=candles.map(x=>x.close),
+v=candles.map(x=>x.vol),
+p=c.at(-1);
+
+let e5=ema(c.slice(-20),5),
+e12=ema(c.slice(-25),12),
+R=rsi(c),
+m3=(p/c.at(-4)-1)*100,
+m5=(p/c.at(-6)-1)*100;
+
+let av=v.slice(-11,-1).reduce((a,b)=>a+b,0)/10,
+vr=v.at(-1)/(av||1);
+
+let rets=[];
+for(let i=c.length-15;i<c.length;i++)
+rets.push(Math.abs((c[i]/c[i-1]-1)*100));
+
+let volatility=rets.reduce((a,b)=>a+b,0)/rets.length;
+
+let score=0;
+score+=Math.max(-28,Math.min(28,(e5/e12-1)*100*180));
+score+=Math.max(-12,Math.min(12,m5*10));
+score+=Math.max(-28,Math.min(28,m3*24));
+score+=(R>55?Math.min(12,(R-55)*.8):R<45?-Math.min(12,(45-R)*.8):0);
+score+=(vr>1.15?Math.sign(m3||1)*Math.min(8,(vr-1)*8):0);
+
+let trendDir=Math.sign(e5-e12),
+momentumDir=Math.sign(m3),
+conflict=trendDir&&momentumDir&&trendDir!==momentumDir;
+
+let weakMomentum=Math.abs(m3)<.025;
+
+let sig=Math.abs(score)<20||volatility>.28||conflict||weakMomentum
+?'WAIT'
+:score>0?'UP':'DOWN';
+
+let conf=sig==='WAIT'
+?Math.max(35,55-Math.abs(score))
+:Math.min(88,52+Math.abs(score)*.65);
+
+lastSignal={
+signal:sig,
+confidence:Math.round(conf),
+score
+};
+
+$('signal').textContent=sig;
+$('signal').className='signalWord '+sig;
+
+$('conf').textContent=sig==='WAIT'
+?`No strong edge · score ${score.toFixed(1)}`
+:`${Math.round(conf)}% model confidence · score ${score.toFixed(1)}`;
+
+$('fill').style.width=
+Math.min(100,Math.max(0,50+score/2))+'%';
+
+$('mom').textContent=(m3>=0?'+':'')+m3.toFixed(3)+'%';
+$('rsi').textContent=R.toFixed(1);
+$('trend').textContent=e5>e12?'Bullish':'Bearish';
+$('vol').textContent=vr.toFixed(2)+'× avg';
+$('price').textContent=fmt(p);
+$('chg').textContent='1m '+((p/c.at(-2)-1)*100).toFixed(3)+'%';
+
+draw(c.slice(-60));
+updateTestDisplay();
+}
+
+function draw(vals){
+let cv=$('chart'),
+dpr=devicePixelRatio||1,
+w=cv.clientWidth,
+h=cv.clientHeight;
+
+cv.width=w*dpr;
+cv.height=h*dpr;
+
+let x=cv.getContext('2d');
+x.scale(dpr,dpr);
+x.clearRect(0,0,w,h);
+
+let min=Math.min(...vals),
+max=Math.max(...vals),
+pad=(max-min)*.08||1;
+
+x.strokeStyle='#6ea8fe';
+x.lineWidth=2;
+x.beginPath();
+
+vals.forEach((v,i)=>{
+let px=i/(vals.length-1)*w,
+py=h-8-(v-min+pad)/(max-min+2*pad)*(h-16);
+i?x.lineTo(px,py):x.moveTo(px,py)
+});
+
+x.stroke()
+}
+
+async function load(){
+let requested=asset;
+
+try{
+let api=`https://api.kraken.com/0/public/OHLC?pair=${ASSETS[requested].pair}&interval=1`;
+
+let r=await fetch(api,{cache:'no-store'});
+
+if(!r.ok)throw Error('HTTP '+r.status);
+
+let j=await r.json();
+
+if(j.error?.length)
+throw Error(j.error.join(', '));
+
+if(requested!==asset)return;
+
+let key=Object.keys(j.result).find(k=>k!=='last');
+
+candles=j.result[key].slice(-180).map(a=>({
+time:+a[0],
+open:+a[1],
+high:+a[2],
+low:+a[3],
+close:+a[4],
+vol:+a[6]
+}));
+
+$('live').textContent='● Live · Kraken';
+$('live').className='live ok';
+
+analyze();
+checkCurrent();
+
+}catch(e){
+
+if(requested!==asset)return;
+
+$('live').textContent='Connection issue';
+
+$('status').innerHTML=
+'<span class="error">Live data unavailable. Reload or try another network.</span>';
+
+console.error(e)
+}
+}
+
+function selectAsset(next){
+
+if(next===asset)return;
+
+asset=next;
+candles=[];
+
+lastSignal={
+signal:'WAIT',
+confidence:0,
+score:0
+};
+
+document.querySelectorAll('.assetBtn').forEach(b=>
+b.classList.toggle('selected',b.dataset.asset===asset)
+);
+
+$('title').textContent=`${asset} 3-Minute Signal`;
+$('pairLabel').textContent=`${asset} / USD`;
+$('price').textContent='—';
+$('chg').textContent='—';
+$('signal').textContent='WAIT';
+$('signal').className='signalWord WAIT';
+$('conf').textContent=`Loading ${ASSETS[asset].name} data…`;
+
+$('mom').textContent=
+$('rsi').textContent=
+$('trend').textContent=
+$('vol').textContent='—';
+
+$('start').disabled=true;
+$('live').textContent='Connecting…';
+$('live').className='live';
+
+updateTestDisplay();
+load()
+}
+
+function start(){
+
+if(activeTests[asset])return;
+if(!candles.length)return;
+
+let p=candles.at(-1).close;
+
+activeTests[asset]={
+asset,
+started:Date.now(),
+ends:Date.now()+180000,
+startPrice:p,
+pred:lastSignal.signal,
+confidence:lastSignal.confidence
+};
+
+$('status').textContent=
+`Locked ${asset}: ${activeTests[asset].pred} at ${fmt(p)}`;
+
+updateTestDisplay();
+
+if(!timerInt){
+timerInt=setInterval(tick,1000)
+}
+
+tick()
+}
+
+function updateTestDisplay(){
+
+let test=activeTests[asset];
+
+document.querySelectorAll('.assetBtn').forEach(b=>{
+b.disabled=false;
+});
+
+if(test){
+
+$('start').disabled=true;
+
+let left=Math.max(0,test.ends-Date.now());
+let s=Math.ceil(left/1000);
+
+$('timer').textContent=
+String(Math.floor(s/60)).padStart(2,'0')+
+':'+
+String(s%60).padStart(2,'0');
+
+$('status').textContent=
+`Test running · ${asset} · predicted ${test.pred}`;
+
+}else{
+
+$('timer').textContent='03:00';
+
+$('start').disabled=candles.length<25;
+
+if(candles.length>=25)
+$('status').textContent='Ready';
+}
+}
+
+function tick(){
+
+let now=Date.now();
+
+Object.keys(activeTests).forEach(testAsset=>{
+if(now>=activeTests[testAsset].ends){
+finish(testAsset)
+}
+});
+
+updateTestDisplay();
+
+if(Object.keys(activeTests).length===0&&timerInt){
+clearInterval(timerInt);
+timerInt=null;
+}
+}
+
+function checkCurrent(){
+
+let now=Date.now();
+
+Object.keys(activeTests).forEach(testAsset=>{
+if(now>=activeTests[testAsset].ends){
+finish(testAsset)
+}
+});
+}
+
+async function finish(testAsset){
+
+let test=activeTests[testAsset];
+
+if(!test)return;
+
+let end=test.startPrice;
+
+try{
+
+let api=
+`https://api.kraken.com/0/public/OHLC?pair=${ASSETS[testAsset].pair}&interval=1`;
+
+let r=await fetch(api,{cache:'no-store'});
+let j=await r.json();
+
+if(!j.error?.length){
+
+let key=Object.keys(j.result).find(k=>k!=='last');
+let rows=j.result[key];
+
+if(rows?.length){
+end=+rows.at(-1)[4];
+}
+}
+
+}catch(e){
+console.error(e)
+}
+
+let actual=
+end>test.startPrice?'UP':
+end<test.startPrice?'DOWN':'FLAT';
+
+let correct=
+test.pred==='WAIT'
+?'Skipped'
+:test.pred===actual
+?'Correct'
+:'Incorrect';
+
+let entry={
+...test,
+endPrice:end,
+actual,
+result:correct,
+date:new Date().toLocaleString(),
+timeframe:3
+};
+
+let logs=
+JSON.parse(localStorage.getItem('crypto3logs')||'[]');
+
+logs.unshift(entry);
+
+localStorage.setItem(
+'crypto3logs',
+JSON.stringify(logs.slice(0,100))
+);
+
+delete activeTests[testAsset];
+
+if(testAsset===asset){
+
+$('status').textContent=
+`${correct}: predicted ${test.pred}, actual ${actual}`;
+
+$('timer').textContent='03:00';
+$('start').disabled=candles.length<25;
+}
+
+renderLog();
+updateTestDisplay()
+}
+
+function renderLog(){
+
+let a=
+JSON.parse(localStorage.getItem('crypto3logs')||'[]');
+
+$('log').innerHTML=
+a.length
+?a.slice(0,20).map(x=>
+`<div class="logrow"><span>${x.asset||'BTC'} ${x.pred} → ${x.actual}</span><span>${x.result}</span><span>${((x.endPrice/x.startPrice-1)*100).toFixed(3)}%</span></div>`
+).join('')
+:'<div class="small" style="margin-top:9px">No completed tests yet.</div>'
+}
+
+$('start').onclick=start;
+
+document.querySelectorAll('.assetBtn').forEach(b=>
+b.onclick=()=>selectAsset(b.dataset.asset)
+);
+
+renderLog();
+load();
+
+setInterval(load,15000);
+
+addEventListener('resize',()=>{
+if(candles.length)
+draw(candles.map(x=>x.close).slice(-60))
+});
+
+function urlBase64ToUint8Array(value){
+
+let padding=
+'='.repeat((4-value.length%4)%4),
+
+base64=
+(value+padding)
+.replace(/-/g,'+')
+.replace(/_/g,'/'),
+
+raw=atob(base64);
+
+return Uint8Array.from(
+[...raw].map(x=>x.charCodeAt(0))
+)
+}
+
+async function enableNotifications(){
+
+let status=$('notifyStatus');
+
+try{
+
+if(!('serviceWorker'in navigator)||!('PushManager'in window))
+throw Error('Push notifications require the Home Screen app on iPhone.');
+
+let permission=
+await Notification.requestPermission();
+
+if(permission!=='granted')
+throw Error('Notification permission was not allowed.');
+
+let registration=
+await navigator.serviceWorker.register('./sw.js');
+
+await navigator.serviceWorker.ready;
+
+let key=
+await fetch('/api/push-key')
+.then(r=>r.json());
+
+let subscription=
+await registration.pushManager.getSubscription()
+||
+await registration.pushManager.subscribe({
+userVisibleOnly:true,
+applicationServerKey:
+urlBase64ToUint8Array(key.publicKey)
+});
+
+let response=
+await fetch('/api/subscribe',{
+method:'POST',
+headers:{
+'content-type':'application/json'
+},
+body:JSON.stringify(subscription)
+});
+
+if(!response.ok)
+throw Error('The server could not save this iPhone.');
+
+status.textContent=
+'Notifications enabled on this iPhone';
+
+$('notify').textContent=
+'Notifications Enabled';
+
+$('notify').disabled=true;
+
+}catch(error){
+
+status.innerHTML=
+`<span class="error">${error.message}</span>`
+}
+}
+
+$('notify').onclick=enableNotifications;
+
+if('serviceWorker'in navigator)
+navigator.serviceWorker.register('/sw.js').catch(()=>{});
+
+</script>
+</body>
+</html>
